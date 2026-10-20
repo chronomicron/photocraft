@@ -223,6 +223,42 @@ fn magic_wand_contiguous_and_modes() {
 }
 
 #[test]
+fn magic_wand_tolerance_refresh_recombines_with_original_selection_and_keeps_undo() {
+    let mut s = session();
+    s.execute("select.rect", json!({"x": 25, "y": 5, "width": 10, "height": 10})).unwrap();
+    let baseline = s.active().unwrap().doc.selection.clone();
+
+    s.execute("select.magicWand", json!({"x": 10, "y": 10, "tolerance": 0, "antiAlias": false, "mode": "add"})).unwrap();
+    assert_eq!(coverage(&s, 10, 10), 1.0);
+    assert_eq!(coverage(&s, 20, 10), 0.0);
+
+    s.execute_magic_wand_with_selection_baseline(json!({"x": 10, "y": 10, "tolerance": 255, "antiAlias": false, "mode": "add"}), baseline.clone()).unwrap();
+    assert_eq!(coverage(&s, 20, 10), 1.0);
+    s.execute_magic_wand_with_selection_baseline(json!({"x": 10, "y": 10, "tolerance": 0, "antiAlias": false, "mode": "add"}), baseline).unwrap();
+    assert_eq!(coverage(&s, 10, 10), 1.0);
+    assert_eq!(coverage(&s, 30, 10), 1.0);
+    assert_eq!(coverage(&s, 20, 10), 0.0);
+
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(coverage(&s, 20, 10), 1.0);
+}
+
+#[test]
+fn magic_wand_subtract_tolerance_refresh_can_restore_baseline_pixels() {
+    let mut s = session();
+    s.execute("select.rect", json!({"x": 25, "y": 5, "width": 10, "height": 10})).unwrap();
+    let baseline = s.active().unwrap().doc.selection.clone();
+    let params = |tolerance| json!({"x": 10, "y": 10, "tolerance": tolerance, "antiAlias": false, "mode": "subtract"});
+
+    s.execute("select.magicWand", params(0)).unwrap();
+    assert_eq!(coverage(&s, 30, 10), 1.0);
+    s.execute_magic_wand_with_selection_baseline(params(255), baseline.clone()).unwrap();
+    assert_eq!(coverage(&s, 30, 10), 0.0);
+    s.execute_magic_wand_with_selection_baseline(params(0), baseline).unwrap();
+    assert_eq!(coverage(&s, 30, 10), 1.0);
+}
+
+#[test]
 fn color_range_prepared_query_matches_the_command_at_all_depths() {
     use photocraft_doc::{Color, ColorMode, SampleType, Size};
     for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {

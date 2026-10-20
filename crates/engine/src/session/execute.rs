@@ -5,6 +5,14 @@ use super::{
 };
 
 impl Session {
+    /// Re-run Magic Wand against the selection that existed before its original click.
+    pub fn execute_magic_wand_with_selection_baseline(&mut self, params: Value, baseline: Option<photocraft_raster::Surface>) -> Result<Value> {
+        let previous = self.magic_wand_selection_baseline.replace(baseline);
+        let result = self.execute("select.magicWand", params);
+        self.magic_wand_selection_baseline = previous;
+        result
+    }
+
     /// Run a command by id with JSON params. Returns a JSON result.
     ///
     /// Any command accepts an optional `"coalesce": "<key>"` param: consecutive edits with the same
