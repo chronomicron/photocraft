@@ -139,6 +139,15 @@ fn readout(h: &Harness<'static, PhotocraftApp>, w: i32, ht: i32) -> bool {
     labels && values && h.query_all_by_label_contains(" px").count() == 2
 }
 
+fn type_tolerance(h: &mut Harness<'static, PhotocraftApp>, value: &str) {
+    h.get_by_role(egui::accesskit::Role::SpinButton).click();
+    h.run_steps(2);
+    h.key_press_modifiers(Modifiers::COMMAND, egui::Key::A);
+    h.event(egui::Event::Text(value.to_owned()));
+    h.key_press(egui::Key::Enter);
+    h.run_steps(3);
+}
+
 #[test]
 fn magic_wand_tolerance_drag_repeats_the_last_sample_point_on_release() {
     let mut h = magic_wand_harness();
@@ -169,6 +178,61 @@ fn magic_wand_tolerance_drag_repeats_the_last_sample_point_on_release() {
     assert!(updated.sample_channel(100, 100, 0) > 0.99);
     assert!(updated.sample_channel(300, 100, 0) > 0.99, "the same sample point now selects the white region");
     assert_eq!(h.state().last_magic_wand.as_ref().unwrap().point, [100.0, 100.0]);
+}
+
+#[test]
+fn magic_wand_typed_tolerance_recomputes_from_last_click_and_original_add_baseline() {
+    let mut h = magic_wand_harness();
+    h.state_mut().ui.tool_options.tolerance = 0.0;
+    h.state_mut().run("select.rect", json!({"x": 250, "y": 100, "width": 20, "height": 20})).unwrap();
+
+    move_to(&mut h, 100.0, 100.0);
+    let p = screen(&h, 100.0, 100.0);
+    button(&mut h, p, true, Modifiers::SHIFT);
+    button(&mut h, p, false, Modifiers::SHIFT);
+    h.run_steps(2);
+
+    let initial = h.state().session.active().unwrap().doc.selection.as_ref().unwrap();
+    assert!(initial.sample_channel(100, 100, 0) > 0.99, "the sampled black region was added");
+    assert!(initial.sample_channel(260, 110, 0) > 0.99, "the original rectangular selection remains");
+    assert!(initial.sample_channel(300, 110, 0) < 0.01, "the white region is outside tolerance 0");
+
+    let before_expand = h.state().session.journal.len();
+    type_tolerance(&mut h, "255");
+    assert_eq!(h.state().session.journal.len(), before_expand + 1, "one typed value creates one tolerance refresh");
+    assert_eq!(h.state().ui.tool_options.tolerance, 255.0);
+    let expanded = h.state().session.active().unwrap().doc.selection.as_ref().unwrap();
+    assert!(expanded.sample_channel(300, 110, 0) > 0.99, "typing recomputes from the saved Magic Wand point");
+
+    let before_shrink = h.state().session.journal.len();
+    type_tolerance(&mut h, "0");
+    assert_eq!(h.state().session.journal.len(), before_shrink + 1, "one typed value creates one tolerance refresh");
+    let reduced = h.state().session.active().unwrap().doc.selection.as_ref().unwrap();
+    assert!(reduced.sample_channel(100, 100, 0) > 0.99);
+    assert!(reduced.sample_channel(260, 110, 0) > 0.99, "reducing tolerance preserves the pre-click selection");
+    assert!(reduced.sample_channel(300, 110, 0) < 0.01, "the typed refresh does not accumulate the expanded region");
+}
+
+#[test]
+fn magic_wand_typed_tolerance_before_first_click_only_changes_the_setting() {
+    let mut h = magic_wand_harness();
+    assert!(h.state().session.active().unwrap().doc.selection.is_none());
+    assert!(h.state().last_magic_wand.is_none());
+
+    let journal_before = h.state().session.journal.len();
+    type_tolerance(&mut h, "255");
+    assert_eq!(h.state().session.journal.len(), journal_before, "typing without a saved wand point does not run a selection command");
+    assert_eq!(h.state().ui.tool_options.tolerance, 255.0);
+    assert!(h.state().session.active().unwrap().doc.selection.is_none(), "without a prior click, typing only changes the setting");
+    assert!(h.state().last_magic_wand.is_none());
+
+    move_to(&mut h, 100.0, 100.0);
+    let p = screen(&h, 100.0, 100.0);
+    button(&mut h, p, true, Modifiers::NONE);
+    button(&mut h, p, false, Modifiers::NONE);
+    h.run_steps(2);
+    let selection = h.state().session.active().unwrap().doc.selection.as_ref().unwrap();
+    assert!(selection.sample_channel(300, 100, 0) > 0.99, "the next click uses the typed tolerance");
 }
 
 #[test]
