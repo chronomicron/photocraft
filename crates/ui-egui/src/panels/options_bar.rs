@@ -377,8 +377,8 @@ fn selection_specific_options(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: 
             widgets::vline(ui, 22.0);
             opt_label(ui, tl!("Tolerance"));
             let tolerance = widgets::value_field(ui, &mut app.ui.tool_options.tolerance, 0.0..=255.0, "", 58.0);
-            let typed_commit = tolerance.lost_focus()
-                || (tolerance.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Tab)));
+            let typed_commit =
+                tolerance.lost_focus() || (tolerance.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Tab)));
             if (tolerance.drag_stopped() || typed_commit)
                 && let Some(last) = app.last_magic_wand.clone()
                 && app.session.active().is_some_and(|doc| {
